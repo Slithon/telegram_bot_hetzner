@@ -23,7 +23,7 @@ services:
       TELEGRAM_TOKEN: 7875206774:AAGjQiIOwFhayED466Gjoqk2lVWAcK7RKe0
     volumes:
       - .:/app
-    command: sh -c "sleep 10 && python /app/bot.py"
+    command: sh -c "sleep 20 && python /app/bot.py"
 
 volumes:
   db-data:
