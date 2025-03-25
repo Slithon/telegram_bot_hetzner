@@ -1,0 +1,6 @@
+pyTelegramBotAPI
+mysql-connector-python
+pyotp
+qrcode
+requests
+pillow

@@ -1,0 +1,29 @@
+services:
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: telegram
+      MYSQL_USER: test
+      MYSQL_PASSWORD: 3324MMMM
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: test
+      DB_PASSWORD: 3324MMMM
+      DB_NAME: telegram
+      TELEGRAM_TOKEN: 7875206774:AAGjQiIOwFhayED466Gjoqk2lVWAcK7RKe0
+    volumes:
+      - .:/app
+    command: sh -c "sleep 10 && python /app/bot.py"
+
+volumes:
+  db-data:
