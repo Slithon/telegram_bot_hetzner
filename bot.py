@@ -26,7 +26,12 @@ connection = mysql.connector.connect(
     password=os.getenv("DB_PASSWORD", "3324MMMM"),
     database=os.getenv("DB_NAME", "telegram")
 )
-
+# connection = mysql.connector.connect(
+#     host="192.168.0.7",
+#     user="sliton",
+#     password="3324Markiun2288!",
+#     database="telegram"
+# )
 cursor = connection.cursor()
 
 
