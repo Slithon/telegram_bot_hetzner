@@ -8,15 +8,15 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 import requests
 import secrets
 import string
-
+import logging
 # ==================== Налаштування Telegram бота ====================
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-
-
+# TOKEN = "0000"
+first_moderator_id = "YOUR_ID"
 bot = telebot.TeleBot(TOKEN)
-
+logging.basicConfig(level=logging.INFO, filename="bot.log", format="%(asctime)s - %(levelname)s - %(message)s")
 
 # ==================== Підключення до бази даних ====================
 
@@ -28,15 +28,15 @@ connection = mysql.connector.connect(
 )
 # connection = mysql.connector.connect(
 #     host="192.168.0.7",
-#     user="sliton",
-#     password="3324Markiun2288!",
-#     database="telegram"
+#     user="0000",
+#     password="0000",
+#     database="0000"
 # )
 cursor = connection.cursor()
 
 
 
-first_moderator_id = "YOUR_ID"
+
 # ==================== Створення таблиць ====================
 # Таблиця груп (зберігає назву групи, Hetzner API-токен та підпис)
 create_groups_table = """
@@ -96,17 +96,30 @@ CREATE TABLE IF NOT EXISTS hetzner_servers (
     FOREIGN KEY (group_name) REFERENCES groups_for_hetzner(group_name) ON DELETE CASCADE
 );
 """
-
+create_blocked_users = """
+CREATE TABLE IF NOT EXISTS blocked_users (
+    user_id VARCHAR(50) PRIMARY KEY,
+    block_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    nickname VARCHAR(255),
+    reason TEXT
+);
+"""
+cursor.execute(create_blocked_users)
 cursor.execute(create_groups_table)
 cursor.execute(create_users_table)
 cursor.execute(create_time_secret_key)
 cursor.execute(create_admins_table)
 cursor.execute(create_pending_admins_table)
 cursor.execute(create_hetzner_servers_table)
+cursor.execute(create_blocked_users)
 connection.commit()
 
 
-
+# pending_admins = """
+# INSERT IGNORE INTO pending_admins (moderator_id)
+# VALUES ('0000')
+# """
+# # cursor.execute(pending_admins)
 connection.commit()
 
 # ==================== Глобальні змінні та клавіатури ====================
@@ -124,28 +137,30 @@ pending_deletion = {}
 secret_message_id = {}
 admin_secret_message_id = {}
 pending_removals = {}
+wrong_attempts = {}
+pending_unblock = {}
 # ==================== Декоратори для перевірки прав ====================
 def admin_only(func):
     def wrapper(message, *args, **kwargs):
         if not is_admin(message.from_user.id):
-            pass
             return
         return func(message, *args, **kwargs)
     return wrapper
+
 def user_only(func):
     def wrapper(message, *args, **kwargs):
-        if is_user(message.from_user.id):
-            pass
+        if not is_user(message.from_user.id):
             return
         return func(message, *args, **kwargs)
     return wrapper
+
 def admin_only_callback(func):
     def wrapper(call, *args, **kwargs):
         if not is_admin(call.from_user.id):
-            pass
             return
         return func(call, *args, **kwargs)
     return wrapper
+
 
 # ==================== Функції роботи з базою даних ====================
 def is_admin(user_id):
@@ -177,6 +192,7 @@ def get_user_secret(user_id):
 
 # ==================== Меню ====================
 @bot.message_handler(commands=["start"])
+@user_only
 def start(message):
 
     send_commands_menu(message)
@@ -201,7 +217,8 @@ def send_commands_menu(message):
         "добавити сервер",
         "створити одноразовий код",
         "список одноразових кодів",
-        "список груп"
+        "список груп",
+        "розблокувати користувача"
     ]
 
     # Додаємо кнопки відповідно до прав користувача
@@ -234,22 +251,39 @@ def register(message):
 
     bot.register_next_step_handler(message, verify_one_time_code)
 
+
 def verify_one_time_code(message):
+    user_id = message.chat.id
 
     one_time_code = message.text.strip()
     cursor.execute("SELECT group_name FROM time_key WHERE time_key = %s", (one_time_code,))
     result = cursor.fetchone()
+
     if result:
+        # Якщо код правильний – очищуємо лічильник невдалих спроб (якщо потрібно)
+        wrong_attempts.pop(user_id, None)
         group_name = result[0]
         cursor.execute("DELETE FROM time_key WHERE time_key = %s AND group_name = %s", (one_time_code, group_name))
         connection.commit()
         username = message.chat.username if message.chat.username else message.from_user.first_name
         secret = pyotp.random_base32()
-        registration_info[str(message.chat.id)] = {"username": username, "group_name": group_name, "secret": secret}
+        registration_info[str(user_id)] = {"username": username, "group_name": group_name, "secret": secret}
         send_qr(message, secret)
+    else:
+        # Логування невдалої спроби
+        logging.warning(f"Користувач {user_id} ввів невірний тимчасовий код.")
+        wrong_attempts[user_id] = wrong_attempts.get(user_id, 0) + 1
 
-
-
+        if wrong_attempts[user_id] >= 5:
+            # Збереження нікнейму користувача разом із блокуванням
+            nickname = message.chat.username if message.chat.username else message.from_user.first_name
+            cursor.execute("INSERT IGNORE INTO blocked_users (user_id, nickname, reason) VALUES (%s, %s, %s)",
+                           (str(user_id), nickname, "Вичерпано кількість спроб введення тимчасового коду"))
+            connection.commit()
+            logging.error(f"Користувач {user_id} заблокований після 5 невдалих спроб.")
+        else:
+            if wrong_attempts[user_id] < 5:
+                bot.register_next_step_handler(message, verify_one_time_code)
 
 def send_qr(message, secret):
     totp = pyotp.TOTP(secret)
@@ -313,10 +347,60 @@ def verify_2fa(message, secret):
         bot.register_next_step_handler(message, verify_2fa, secret)
 
 # ==================== Модераторські команди ====================
+@bot.message_handler(func=lambda message: message.text.strip().lower() == "розблокувати користувача")
+def unblock_user(message):
+    # Перевірка прав адміністратора
+    if not is_admin(message.from_user.id):
+        bot.send_message(message.chat.id, "Ця команда доступна лише адміністраторам.")
+        return
+
+    bot.send_message(message.chat.id, "Введіть ID користувача для розблокування:")
+    bot.register_next_step_handler(message, process_unblock)
+
+def process_unblock(message):
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        bot.send_message(message.chat.id, "Невірний формат ID.")
+        return
+
+    # Зберігаємо дані про розблокування в глобальному словнику
+    pending_unblock[message.from_user.id] = user_id
+    bot.send_message(message.chat.id, "Введіть свій 2FA-код для підтвердження операції:")
+    bot.register_next_step_handler(message, process_unblock_2fa)
+
+def process_unblock_2fa(message):
+    admin_id = message.from_user.id
+    admin_secret = get_admin_secret_key(admin_id)
+    if not admin_secret:
+        bot.send_message(message.chat.id, "Не знайдено ваш секретний ключ для 2FA.")
+        pending_unblock.pop(admin_id, None)
+        return
+
+    totp = pyotp.TOTP(admin_secret)
+    if not totp.verify(message.text.strip()):
+        bot.send_message(message.chat.id, "❌ Невірний 2FA-код. Операція скасована.")
+        pending_unblock.pop(admin_id, None)
+        return
+
+    # Отримуємо ID користувача, якого потрібно розблокувати
+    user_id = pending_unblock.pop(admin_id)
+    # Отримуємо нікнейм користувача перед видаленням з таблиці заблокованих
+    cursor.execute("SELECT nickname FROM blocked_users WHERE user_id = %s", (str(user_id),))
+    result = cursor.fetchone()
+    if result:
+        nickname = result[0]
+        cursor.execute("DELETE FROM blocked_users WHERE user_id = %s", (str(user_id),))
+        connection.commit()
+        wrong_attempts.pop(user_id, None)
+        logging.info(f"Користувача {user_id} ({nickname}) розблоковано адміністратором {admin_id}.")
+        bot.send_message(message.chat.id, f"Користувача {nickname} (ID: {user_id}) успішно розблоковано.")
+    else:
+        bot.send_message(message.chat.id, "Користувача з таким ID не знайдено у списку заблокованих.")
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "змінити групу")
 @admin_only
 def switch_group(message):
-
+    user_id = message.from_user.id
     cursor.execute("SELECT group_name FROM groups_for_hetzner")
     groups = cursor.fetchall()
     if not groups:
@@ -688,7 +772,6 @@ def register_admin(message):
     user_id = str(message.from_user.id)
     cursor.execute("SELECT moderator_id FROM pending_admins WHERE moderator_id = %s", (user_id,))
     if not cursor.fetchone():
-        pass
         return
     secret = pyotp.random_base32()
     bot.send_message(message.chat.id, "Відправляємо QR-код для налаштування 2FA адміністраторів...")
