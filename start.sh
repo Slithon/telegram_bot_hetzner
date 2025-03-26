@@ -26,9 +26,8 @@ fi
 REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
 CLONE_DIR="telegram_bot_hetzner"
 
-if [ ! -d "$CLONE_DIR" ]; then
-    git clone "$REPO_URL" >/dev/null 2>&1
-fi
+git clone "$REPO_URL" >/dev/null 2>&1
+
 
 cd "$CLONE_DIR" || exit
 
