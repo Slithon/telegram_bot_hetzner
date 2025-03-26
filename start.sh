@@ -26,20 +26,26 @@ fi
 REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
 CLONE_DIR="telegram_bot_hetzner"
 
-if [ ! -d "$CLONE_DIR" ]; then
-    git clone "$REPO_URL" >/dev/null 2>&1
+
+if [ -d "$CLONE_DIR" ] && [ -f "$CLONE_DIR/docker-compose.yml" ]; then
+    echo "Docker Compose setup already built. Skipping cloning and setup."
+    cd "$CLONE_DIR" || exit
+else
+    if [ ! -d "$CLONE_DIR" ]; then
+        git clone "$REPO_URL" >/dev/null 2>&1
+    fi
+    cd "$CLONE_DIR" || exit
+
+    # Вказуємо файл docker-compose
+    COMPOSE_FILE="docker-compose.yml"
+    # Замінюємо токен у файлі docker-compose.yml, підставляючи значення YOUR_TOKEN
+    sed -i 's/TELEGRAM_TOKEN: TOKEN/TELEGRAM_TOKEN: '"$YOUR_TOKEN"'/' "$COMPOSE_FILE"
+
+    # Вказуємо файл з ботом
+    BOT_FILE="bot.py"
+    # Замінюємо в bot.py рядок з id першого модератора
+    sed -i 's/first_moderator_id = "YOUR_ID"/first_moderator_id = '"$first_moderator_id"'/' "$BOT_FILE"
 fi
 
-cd "$CLONE_DIR" || exit
-
-# Вказуємо файл docker-compose
-COMPOSE_FILE="docker-compose.yml"
-# Замінюємо токен у файлі docker-compose.yml, підставляючи значення YOUR_TOKEN
-sed -i 's/TELEGRAM_TOKEN: TOKEN/TELEGRAM_TOKEN: '"$YOUR_TOKEN"'/' "$COMPOSE_FILE"
-
-# Вказуємо файл з ботом
-BOT_FILE="bot.py"
-# Замінюємо в bot.py рядок з id першого модератора
-sed -i 's/first_moderator_id = "YOUR_ID"/first_moderator_id = '"$first_moderator_id"'/' "$BOT_FILE"
 sudo systemctl enable docker
 sudo docker-compose up --build
