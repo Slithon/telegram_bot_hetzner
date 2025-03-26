@@ -349,26 +349,42 @@ def verify_2fa(message, secret):
 
 # ==================== Модераторські команди ====================
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "розблокувати користувача")
+@admin_only
 def unblock_user(message):
     # Перевірка прав адміністратора
-    if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "Ця команда доступна лише адміністраторам.")
+
+
+    # Отримання списку заблокованих користувачів із бази даних
+    cursor.execute("SELECT user_id, nickname FROM blocked_users")
+    blocked = cursor.fetchall()
+    if not blocked:
+        bot.send_message(message.chat.id, "Немає заблокованих користувачів.")
         return
 
-    bot.send_message(message.chat.id, "Введіть ID користувача для розблокування:")
-    bot.register_next_step_handler(message, process_unblock)
+    # Формування інлайн-клавіатури з кнопками для кожного заблокованого користувача
+    markup = InlineKeyboardMarkup()
+    for user in blocked:
+        user_id, nickname = user
+        display = nickname if nickname and nickname.strip() != "" else f"ID: {user_id}"
+        markup.add(InlineKeyboardButton(f"Розблокувати {display}", callback_data=f"confirm_unblock:{user_id}"))
+    bot.send_message(message.chat.id, "Оберіть користувача для розблокування:", reply_markup=markup)
 
-def process_unblock(message):
-    try:
-        user_id = int(message.text.strip())
-    except ValueError:
-        bot.send_message(message.chat.id, "Невірний формат ID.")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_unblock:"),)
+@admin_only_callback
+def confirm_unblock_callback(call):
+    # Отримання ID користувача для розблокування із callback_data
+    parts = call.data.split(":", 1)
+    if len(parts) != 2:
+        bot.answer_callback_query(call.id, "Невірний формат даних.")
         return
+    unblock_user_id = parts[1]
+    admin_id = call.from_user.id
+    # Записуємо ID користувача, якого потрібно розблокувати, в глобальний словник
+    pending_unblock[admin_id] = unblock_user_id
 
-    # Зберігаємо дані про розблокування в глобальному словнику
-    pending_unblock[message.from_user.id] = user_id
-    bot.send_message(message.chat.id, "Введіть свій 2FA-код для підтвердження операції:")
-    bot.register_next_step_handler(message, process_unblock_2fa)
+    bot.answer_callback_query(call.id, "Будь ласка, введіть свій 2FA-код для підтвердження розблокування.")
+    bot.send_message(call.message.chat.id, "Введіть свій 2FA-код для підтвердження розблокування:")
+    bot.register_next_step_handler(call.message, process_unblock_2fa)
 
 def process_unblock_2fa(message):
     admin_id = message.from_user.id
@@ -385,19 +401,20 @@ def process_unblock_2fa(message):
         return
 
     # Отримуємо ID користувача, якого потрібно розблокувати
-    user_id = pending_unblock.pop(admin_id)
+    unblock_user_id = pending_unblock.pop(admin_id)
     # Отримуємо нікнейм користувача перед видаленням з таблиці заблокованих
-    cursor.execute("SELECT nickname FROM blocked_users WHERE user_id = %s", (str(user_id),))
+    cursor.execute("SELECT nickname FROM blocked_users WHERE user_id = %s", (str(unblock_user_id),))
     result = cursor.fetchone()
     if result:
         nickname = result[0]
-        cursor.execute("DELETE FROM blocked_users WHERE user_id = %s", (str(user_id),))
+        cursor.execute("DELETE FROM blocked_users WHERE user_id = %s", (str(unblock_user_id),))
         connection.commit()
-        wrong_attempts.pop(user_id, None)
-        logging.info(f"Користувача {user_id} ({nickname}) розблоковано адміністратором {admin_id}.")
-        bot.send_message(message.chat.id, f"Користувача {nickname} (ID: {user_id}) успішно розблоковано.")
+        wrong_attempts.pop(unblock_user_id, None)
+        logging.info(f"Користувача {unblock_user_id} ({nickname}) розблоковано адміністратором {admin_id}.")
+        bot.send_message(message.chat.id, f"Користувача {nickname} (ID: {unblock_user_id}) успішно розблоковано.")
     else:
         bot.send_message(message.chat.id, "Користувача з таким ID не знайдено у списку заблокованих.")
+
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "змінити групу")
 @admin_only
 def switch_group(message):
