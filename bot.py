@@ -149,10 +149,11 @@ def admin_only(func):
 
 def user_only(func):
     def wrapper(message, *args, **kwargs):
-        if not is_user(message.from_user.id):
-            return
+        if not is_user(message.from_user.id) and not is_admin(message.from_user.id):
+            return  # Якщо користувач не є звичайним користувачем або адміністратором, нічого не робимо
         return func(message, *args, **kwargs)
     return wrapper
+
 
 def admin_only_callback(func):
     def wrapper(call, *args, **kwargs):
