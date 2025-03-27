@@ -39,6 +39,7 @@ fi
 if ! command_exists docker-compose; then
     sudo curl -sL "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose >/dev/null 2>&1
     sudo chmod +x /usr/local/bin/docker-compose >/dev/null 2>&1
+    sudo apt-get install docker-ce docker-ce-cli containerd.io -y >/dev/null 2>&1
 fi
 
 REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
