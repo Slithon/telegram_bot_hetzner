@@ -15,7 +15,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # TOKEN = "0000"
 first_moderator_id = "YOUR_ID"
-bot = telebot.TeleBot(TOKEN)
+
 logging.basicConfig(level=logging.INFO, filename="bot.log", format="%(asctime)s - %(levelname)s - %(message)s")
 
 # ==================== Підключення до бази даних ====================
@@ -40,7 +40,7 @@ except mysql.connector.Error as err:
 # )
 
 
-
+bot = telebot.TeleBot(TOKEN)
 
 
 # ==================== Створення таблиць ====================
