@@ -26,7 +26,7 @@ services:
       DB_USER: test
       DB_PASSWORD: 3324MMMM
       DB_NAME: telegram
-      TELEGRAM_TOKEN: 7875206774:AAGjQiIOwFhayED466Gjoqk2lVWAcK7RKe0
+      TELEGRAM_TOKEN: TOKEN
     volumes:
       - .:/app
     command: sh -c "sleep 20 && python /app/bot.py"
