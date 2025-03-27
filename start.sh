@@ -27,8 +27,14 @@ REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
 CLONE_DIR="telegram_bot_hetzner"
 
 apt install libssl-dev -y
-git clone "$REPO_URL" >/dev/null 2>&1
 
+if [ ! -d "$CLONE_DIR" ]; then
+    git clone "$REPO_URL" >/dev/null 2>&1
+else
+    cd "$CLONE_DIR" || exit
+    git pull origin main >/dev/null 2>&1
+    cd ..
+fi
 
 cd "$CLONE_DIR" || exit
 
@@ -41,8 +47,14 @@ sed -i 's/TELEGRAM_TOKEN: TOKEN/TELEGRAM_TOKEN: '"$YOUR_TOKEN"'/' "$COMPOSE_FILE
 BOT_FILE="bot.py"
 # Замінюємо в bot.py рядок з id першого модератора
 sed -i 's/first_moderator_id = "YOUR_ID"/first_moderator_id = '"$first_moderator_id"'/' "$BOT_FILE"
+
 sudo systemctl enable docker
-sudo docker-compose down -v
+sudo systemctl start docker
+
+
+sudo docker-compose down
 sudo docker container prune -f
 sudo docker network prune -f
+sudo docker image prune -f
+
 sudo docker-compose up --build
