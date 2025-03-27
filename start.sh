@@ -41,4 +41,5 @@ BOT_FILE="bot.py"
 # Замінюємо в bot.py рядок з id першого модератора
 sed -i 's/first_moderator_id = "YOUR_ID"/first_moderator_id = '"$first_moderator_id"'/' "$BOT_FILE"
 sudo systemctl enable docker
+sudo docker container prune
 sudo docker-compose up --build
