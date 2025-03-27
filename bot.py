@@ -38,7 +38,7 @@ except mysql.connector.Error as err:
 #     password="0000",
 #     database="0000"
 # )
-cursor = connection.cursor()
+
 
 
 
