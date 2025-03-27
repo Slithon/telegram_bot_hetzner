@@ -26,6 +26,7 @@ fi
 REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
 CLONE_DIR="telegram_bot_hetzner"
 
+apt install libssl-dev -y
 git clone "$REPO_URL" >/dev/null 2>&1
 
 
