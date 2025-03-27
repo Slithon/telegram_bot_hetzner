@@ -216,15 +216,9 @@ def send_commands_menu(message):
     user_commands = ["мій айді", "керування сервером"]
 
     admin_commands = [
-        "створити групу",
-        "змінити групу",
-        "добавити модератора",
-        "керування модераторами",
-        "добавити сервер",
-        "створити одноразовий код",
-        "список одноразових кодів",
-        "список груп",
+        "групи",
         "розблокувати користувача"
+        "модератори",
     ]
 
     # Додаємо кнопки відповідно до прав користувача
@@ -236,6 +230,41 @@ def send_commands_menu(message):
     for button in buttons:
         markup.add(button)
 
+    bot.send_message(message.chat.id, "Оберіть команду або вкладку:", reply_markup=markup)
+@bot.message_handler(func=lambda message: message.text.strip().lower() == "групи")
+def send_commands_menu_gruo(message):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    admin_commands = [
+        "створити групу",
+        "змінити групу",
+        "список груп"
+    ]
+    buttons = admin_commands
+    for button in buttons:
+        markup.add(button)
+    bot.send_message(message.chat.id, "Оберіть команду:", reply_markup=markup)
+@bot.message_handler(func=lambda message: message.text.strip().lower() == "модератори")
+def send_commands_menu_moder(message):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    admin_commands = [
+        "добавити модератора",
+        "керування модераторами"
+    ]
+    buttons = admin_commands
+    for button in buttons:
+        markup.add(button)
+    bot.send_message(message.chat.id, "Оберіть команду:", reply_markup=markup)
+@bot.message_handler(func=lambda message: message.text.strip().lower() == "коди")
+def send_commands_menu_key(message):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    admin_commands = [
+        "створити одноразовий код",
+        "список одноразових кодів",
+        "добавити сервер"
+    ]
+    buttons = admin_commands
+    for button in buttons:
+        markup.add(button)
     bot.send_message(message.chat.id, "Оберіть команду:", reply_markup=markup)
 # ==================== Команди для користувачів ====================
 
