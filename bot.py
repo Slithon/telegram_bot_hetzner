@@ -20,12 +20,18 @@ logging.basicConfig(level=logging.INFO, filename="bot.log", format="%(asctime)s 
 
 # ==================== Підключення до бази даних ====================
 
-connection = mysql.connector.connect(
-    host=os.getenv("DB_HOST", "db"),
-    user=os.getenv("DB_USER", "test"),
-    password=os.getenv("DB_PASSWORD", "3324MMMM"),
-    database=os.getenv("DB_NAME", "telegram")
-)
+
+try:
+    connection = mysql.connector.connect(
+        host=os.getenv("DB_HOST", "db"),
+        user=os.getenv("DB_USER", "test"),
+        password=os.getenv("DB_PASSWORD", "3324MMMM"),
+        database=os.getenv("DB_NAME", "telegram")
+    )
+    cursor = connection.cursor()
+except mysql.connector.Error as err:
+    logging.error(f"Error connecting to MySQL: {err}")
+    raise
 # connection = mysql.connector.connect(
 #     host="192.168.0.7",
 #     user="0000",

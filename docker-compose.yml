@@ -6,6 +6,10 @@ services:
       MYSQL_DATABASE: telegram
       MYSQL_USER: test
       MYSQL_PASSWORD: 3324MMMM
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_TCP_PORT: 3306
+      MYSQL_WAIT_TIMEOUT: 600
+      MYSQL_INTERACTIVE_TIMEOUT: 600
     ports:
       - "3306:3306"
     volumes:
