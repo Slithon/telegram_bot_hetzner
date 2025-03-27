@@ -1,6 +1,24 @@
 #!/bin/bash
-first_moderator_id="00000"
+first_moderator_id="0000"
 YOUR_TOKEN="0000"
+
+# Отримання директорії, де знаходиться скрипт
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Задаємо ім'я папки, яку потрібно перевірити (наприклад, "docker_folder")
+TARGET_FOLDER="docker_folder"
+TARGET_DIR="${SCRIPT_DIR}/${TARGET_FOLDER}"
+
+# Умова: якщо папка існує, переходимо в неї та виконуємо команди
+if [ -d "$TARGET_DIR" ]; then
+    cd "$TARGET_DIR" || { echo "Не вдалося перейти до каталогу $TARGET_DIR"; exit 1; }
+    # Увімкнення Docker
+    sudo systemctl enable docker
+    # Запуск docker-compose
+    sudo docker-compose up
+    exit
+fi
+
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -26,14 +44,8 @@ fi
 REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
 CLONE_DIR="telegram_bot_hetzner"
 
-apt install libssl-dev -y
-
 if [ ! -d "$CLONE_DIR" ]; then
     git clone "$REPO_URL" >/dev/null 2>&1
-else
-    cd "$CLONE_DIR" || exit
-    git pull origin main >/dev/null 2>&1
-    cd ..
 fi
 
 cd "$CLONE_DIR" || exit
@@ -47,14 +59,5 @@ sed -i 's/TELEGRAM_TOKEN: TOKEN/TELEGRAM_TOKEN: '"$YOUR_TOKEN"'/' "$COMPOSE_FILE
 BOT_FILE="bot.py"
 # Замінюємо в bot.py рядок з id першого модератора
 sed -i 's/first_moderator_id = "YOUR_ID"/first_moderator_id = '"$first_moderator_id"'/' "$BOT_FILE"
-
 sudo systemctl enable docker
-sudo systemctl start docker
-
-
-sudo docker-compose down
-sudo docker container prune -f
-sudo docker network prune -f
-sudo docker image prune -f
-
 sudo docker-compose up --build
