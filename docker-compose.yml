@@ -27,6 +27,7 @@ services:
       DB_PASSWORD: 3324MMMM
       DB_NAME: telegram
       TELEGRAM_TOKEN: TOKEN
+      MODERATOR_ID: MODERATOR
     volumes:
       - .:/app
     command: sh -c "sleep 20 && python /app/bot.py"

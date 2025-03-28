@@ -55,10 +55,6 @@ cd "$CLONE_DIR" || exit
 COMPOSE_FILE="docker-compose.yml"
 # Замінюємо токен у файлі docker-compose.yml, підставляючи значення YOUR_TOKEN
 sed -i 's/TELEGRAM_TOKEN: TOKEN/TELEGRAM_TOKEN: '"$YOUR_TOKEN"'/' "$COMPOSE_FILE"
-
-# Вказуємо файл з ботом
-BOT_FILE="bot.py"
-# Замінюємо в bot.py рядок з id першого модератора
-sed -i 's/first_moderator_id = "YOUR_ID"/first_moderator_id = '"$first_moderator_id"'/' "$BOT_FILE"
+sed -i 's/MODERATOR_ID: MODERATOR/MODERATOR_ID: '"$first_moderator_id"'/' "$COMPOSE_FILE"
 sudo systemctl enable docker
 sudo docker-compose up --build

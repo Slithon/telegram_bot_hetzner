@@ -14,7 +14,9 @@ import logging
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # TOKEN = "0000"
-first_moderator_id = "YOUR_ID"
+first_moderator_id = os.getenv("MODERATOR_ID")
+
+
 
 logging.basicConfig(level=logging.INFO, filename="bot.log", format="%(asctime)s - %(levelname)s - %(message)s")
 
