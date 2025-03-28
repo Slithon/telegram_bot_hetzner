@@ -54,7 +54,8 @@ cd "$CLONE_DIR" || exit
 # Вказуємо файл docker-compose
 COMPOSE_FILE="docker-compose.yml"
 # Замінюємо токен у файлі docker-compose.yml, підставляючи значення YOUR_TOKEN
-sed -i 's/TELEGRAM_TOKEN: TOKEN/TELEGRAM_TOKEN: '"$YOUR_TOKEN"'/' "$COMPOSE_FILE"
-sed -i 's/MODERATOR_ID: MODERATOR/MODERATOR_ID: '"$first_moderator_id"'/' "$COMPOSE_FILE"
+sed -i 's|TELEGRAM_TOKEN: TOKEN|TELEGRAM_TOKEN: "'"$YOUR_TOKEN"'"|' "$COMPOSE_FILE"
+sed -i 's|MODERATOR_ID: MODERATOR|MODERATOR_ID: "'"$first_moderator_id"'"|' "$COMPOSE_FILE"
+
 sudo systemctl enable docker
 sudo docker-compose up --build
