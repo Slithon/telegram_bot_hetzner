@@ -41,7 +41,7 @@ def execute_db(query, params=None, fetchone=False, commit=False):
         logging.error(f"Error executing query: {err}")
         return None
 
-# ==================== Створення таблиць (з використанням окремого з’єднання) ====================
+
 create_groups_table = """
 CREATE TABLE IF NOT EXISTS groups_for_hetzner (
     group_name VARCHAR(255) NOT NULL,
