@@ -118,8 +118,8 @@ wrong_attempts = {}
 pending_unblock = {}
 users_cache = set()
 admins_cache = set()
-# ==================== Функції перевірки прав доступу ====================
 
+# ==================== Функції перевірки прав доступу ====================
 def update_users_cache():
     global users_cache, admins_cache
     # Отримуємо всіх користувачів (прості користувачі)
@@ -128,14 +128,17 @@ def update_users_cache():
     admins = execute_db("SELECT admin_id FROM admins_2fa", fetchone=False)
     users_cache = {str(row[0]) for row in users} if users else set()
     admins_cache = {str(row[0]) for row in admins} if admins else set()
-def is_admin(user_id):
 
+# Спочатку оновлюємо кеш при старті
+update_users_cache()
+
+def is_admin(user_id):
     return str(user_id) in admins_cache
 
 def is_user(user_id):
-
     uid = str(user_id)
     return uid in users_cache or uid in admins_cache
+
 def get_group_by_user(user_id):
     result = execute_db("SELECT group_name FROM users WHERE user_id = %s", (str(user_id),), fetchone=True)
     return result[0] if result else None
@@ -169,7 +172,7 @@ def start(message):
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "мій айді")
 def my_id(message):
-    bot.reply_to(message, f"Ваш user ID: {message.from_user.id}")
+    bot.reply_to(message, f"Ваш user ID: {message.chat.id}")
     send_commands_menu(message)
 
 # ==================== Реєстрація користувача ====================
@@ -236,6 +239,8 @@ def verify_2fa(message, secret):
                     (str(message.chat.id), info["username"], info["group_name"], info["secret"]),
                     commit=True
                 )
+                # Оновлення кешу після додавання користувача
+                update_users_cache()
             except Exception as err:
                 bot.send_message(message.chat.id, f"Помилка збереження даних: {err}")
             registration_info.pop(str(message.chat.id), None)
@@ -366,6 +371,7 @@ def verify_clear_users(message, secret):
     if totp.verify(message.text.strip()):
         try:
             execute_db("DELETE FROM users", commit=True)
+            update_users_cache()  # Оновлення кешу після видалення всіх користувачів
             bot.reply_to(message, "Усі користувачі видалені.")
             send_commands_menu(message)
         except Exception as err:
@@ -601,6 +607,7 @@ def confirm_delete_user_callback(call):
     user_id = data[2]
     try:
         execute_db("DELETE FROM users WHERE user_id = %s AND group_name = %s", (user_id, group_name), commit=True)
+        update_users_cache()  # Оновлення кешу після видалення користувача
         bot.answer_callback_query(call.id, f"Користувача з ID {user_id} видалено.")
         bot.send_message(call.message.chat.id, f"Користувача з ID {user_id} видалено з групи {group_name}.")
     except Exception as err:
@@ -661,6 +668,8 @@ def verify_admin_2fa(message, secret):
                 (user_id, username, secret),
                 commit=True
             )
+            # Оновлення кешу після додавання адміністратора
+            update_users_cache()
             bot.send_message(message.chat.id, "✅ Ви успішно зареєстровані як адміністратор!")
             execute_db("DELETE FROM pending_admins WHERE moderator_id = %s", (user_id,), commit=True)
         except Exception as err:
@@ -718,6 +727,7 @@ def verify_remove_moderator(message, mod_id):
     if totp.verify(message.text.strip()):
         try:
             execute_db("DELETE FROM admins_2fa WHERE admin_id = %s", (mod_id,), commit=True)
+            update_users_cache()  # Оновлення кешу після видалення адміністратора
             bot.send_message(chat_id, f"Модератор з ID {mod_id} успішно видалено.")
         except Exception as err:
             bot.send_message(chat_id, f"❌ Помилка видалення модератора: {err}")
