@@ -116,16 +116,26 @@ admin_secret_message_id = {}
 pending_removals = {}
 wrong_attempts = {}
 pending_unblock = {}
-
+users_cache = set()
+admins_cache = set()
 # ==================== Функції перевірки прав доступу ====================
+
+def update_users_cache():
+    global users_cache, admins_cache
+    # Отримуємо всіх користувачів (прості користувачі)
+    users = execute_db("SELECT user_id FROM users", fetchone=False)
+    # Отримуємо всіх адміністраторів
+    admins = execute_db("SELECT admin_id FROM admins_2fa", fetchone=False)
+    users_cache = {str(row[0]) for row in users} if users else set()
+    admins_cache = {str(row[0]) for row in admins} if admins else set()
 def is_admin(user_id):
-    result = execute_db("SELECT admin_id FROM admins_2fa WHERE admin_id = %s", (str(user_id),), fetchone=True)
-    return result is not None
+
+    return str(user_id) in admins_cache
 
 def is_user(user_id):
-    result = execute_db("SELECT user_id FROM users WHERE user_id = %s", (str(user_id),), fetchone=True)
-    return result is not None
 
+    uid = str(user_id)
+    return uid in users_cache or uid in admins_cache
 def get_group_by_user(user_id):
     result = execute_db("SELECT group_name FROM users WHERE user_id = %s", (str(user_id),), fetchone=True)
     return result[0] if result else None
