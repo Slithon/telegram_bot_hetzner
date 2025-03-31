@@ -9,7 +9,7 @@ import secrets
 import string
 from io import BytesIO
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from contextlib import contextmanager
+
 
 # ==================== Налаштування Telegram бота ====================
 TOKEN = os.getenv("TELEGRAM_TOKEN")
