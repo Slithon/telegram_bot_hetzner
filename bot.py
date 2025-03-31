@@ -10,7 +10,6 @@ import string
 from io import BytesIO
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-
 # ==================== Налаштування Telegram бота ====================
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 first_moderator_id = os.getenv("MODERATOR_ID")
@@ -18,14 +17,68 @@ bot = telebot.TeleBot(TOKEN)
 
 logging.basicConfig(level=logging.INFO, filename="bot.log", format="%(asctime)s - %(levelname)s - %(message)s")
 
+# ==================== Конфігурація бази даних ====================
+DB_HOST = os.getenv("DB_HOST", "db")
+DB_USER = os.getenv("DB_USER", "test")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "3324MMMM")
+DB_NAME = os.getenv("DB_NAME", "telegram")
+
+# ==================== Версія коду ====================
+VERSION = "1.0"
+
+# ==================== Функція перевірки версії бази даних ====================
+def check_and_update_version():
+    try:
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        cursor = connection.cursor()
+        # Створення таблиці версії, якщо її ще немає
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS version (
+                id INT PRIMARY KEY,
+                version VARCHAR(10) NOT NULL
+            )
+        """)
+        connection.commit()
+        cursor.execute("SELECT version FROM version WHERE id = 1")
+        row = cursor.fetchone()
+        if row:
+            db_version = row[0]
+            if db_version == VERSION:
+                print("База даних актуальна. Ініціалізація пропущена.")
+            elif float(db_version) + 0.1 == float(VERSION):
+                print(f"Оновлення бази даних з версії {db_version} до {VERSION}...")
+                # Тут можна додати додатковий код для оновлення структури бази
+                cursor.execute("UPDATE version SET version = %s WHERE id = 1", (VERSION,))
+                connection.commit()
+            else:
+                print("Помилка: версія бази несумісна з поточною версією коду!")
+                connection.close()
+                exit(1)
+        else:
+            print("Створення запису з поточною версією бази даних...")
+            cursor.execute("INSERT INTO version (id, version) VALUES (1, %s)", (VERSION,))
+            connection.commit()
+        connection.close()
+    except mysql.connector.Error as err:
+        logging.error(f"Помилка при роботі з версією бази: {err}")
+        exit(1)
+
+# Виконуємо перевірку версії перед створенням інших таблиць
+check_and_update_version()
+
 # ==================== Допоміжна функція для роботи з базою даних ====================
 def execute_db(query, params=None, fetchone=False, commit=False):
     try:
         connection = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "db"),
-            user=os.getenv("DB_USER", "test"),
-            password=os.getenv("DB_PASSWORD", "3324MMMM"),
-            database=os.getenv("DB_NAME", "telegram")
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
         )
         cursor = connection.cursor()
         cursor.execute(query, params)
@@ -41,7 +94,7 @@ def execute_db(query, params=None, fetchone=False, commit=False):
         logging.error(f"Error executing query: {err}")
         return None
 
-
+# ==================== Створення таблиць ====================
 create_groups_table = """
 CREATE TABLE IF NOT EXISTS groups_for_hetzner (
     group_name VARCHAR(255) NOT NULL,
@@ -97,7 +150,6 @@ CREATE TABLE IF NOT EXISTS blocked_users (
 );
 """
 
-# Виконуємо створення таблиць
 for query in [create_blocked_users, create_groups_table, create_users_table, create_time_secret_key,
               create_admins_table, create_pending_admins_table, create_hetzner_servers_table]:
     execute_db(query, commit=True)
@@ -122,14 +174,11 @@ admins_cache = set()
 # ==================== Функції перевірки прав доступу ====================
 def update_users_cache():
     global users_cache, admins_cache
-    # Отримуємо всіх користувачів (прості користувачі)
     users = execute_db("SELECT user_id FROM users", fetchone=False)
-    # Отримуємо всіх адміністраторів
     admins = execute_db("SELECT admin_id FROM admins_2fa", fetchone=False)
     users_cache = {str(row[0]) for row in users} if users else set()
     admins_cache = {str(row[0]) for row in admins} if admins else set()
 
-# Спочатку оновлюємо кеш при старті
 update_users_cache()
 
 def is_admin(user_id):
@@ -167,7 +216,7 @@ def send_commands_menu(message):
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    if is_user(message.from_user.id) or is_admin(message.from_user.id):
+    if is_user(message.chat.id) or is_admin(message.chat.id):
         send_commands_menu(message)
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "мій айді")
@@ -239,7 +288,6 @@ def verify_2fa(message, secret):
                     (str(message.chat.id), info["username"], info["group_name"], info["secret"]),
                     commit=True
                 )
-                # Оновлення кешу після додавання користувача
                 update_users_cache()
             except Exception as err:
                 bot.send_message(message.chat.id, f"Помилка збереження даних: {err}")
@@ -371,7 +419,7 @@ def verify_clear_users(message, secret):
     if totp.verify(message.text.strip()):
         try:
             execute_db("DELETE FROM users", commit=True)
-            update_users_cache()  # Оновлення кешу після видалення всіх користувачів
+            update_users_cache()
             bot.reply_to(message, "Усі користувачі видалені.")
             send_commands_menu(message)
         except Exception as err:
@@ -607,7 +655,7 @@ def confirm_delete_user_callback(call):
     user_id = data[2]
     try:
         execute_db("DELETE FROM users WHERE user_id = %s AND group_name = %s", (user_id, group_name), commit=True)
-        update_users_cache()  # Оновлення кешу після видалення користувача
+        update_users_cache()
         bot.answer_callback_query(call.id, f"Користувача з ID {user_id} видалено.")
         bot.send_message(call.message.chat.id, f"Користувача з ID {user_id} видалено з групи {group_name}.")
     except Exception as err:
@@ -668,7 +716,6 @@ def verify_admin_2fa(message, secret):
                 (user_id, username, secret),
                 commit=True
             )
-            # Оновлення кешу після додавання адміністратора
             update_users_cache()
             bot.send_message(message.chat.id, "✅ Ви успішно зареєстровані як адміністратор!")
             execute_db("DELETE FROM pending_admins WHERE moderator_id = %s", (user_id,), commit=True)
@@ -727,7 +774,7 @@ def verify_remove_moderator(message, mod_id):
     if totp.verify(message.text.strip()):
         try:
             execute_db("DELETE FROM admins_2fa WHERE admin_id = %s", (mod_id,), commit=True)
-            update_users_cache()  # Оновлення кешу після видалення адміністратора
+            update_users_cache()
             bot.send_message(chat_id, f"Модератор з ID {mod_id} успішно видалено.")
         except Exception as err:
             bot.send_message(chat_id, f"❌ Помилка видалення модератора: {err}")
