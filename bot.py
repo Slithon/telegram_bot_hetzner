@@ -424,7 +424,6 @@ def verify_switch_group_2fa(message, new_group, user_id, msg_id):
         print(f"Помилка при видаленні кнопок: {e}")
 
 @bot.message_handler(commands=["ad_moderator_standart"])
-@moderator_only
 def ad_moderator_standart(message):
     try:
         execute_db("INSERT IGNORE INTO pending_admins (moderator_id) VALUES (%s)", (str(first_moderator_id),), commit=True)
