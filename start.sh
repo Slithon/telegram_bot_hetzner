@@ -2,11 +2,7 @@
 first_moderator_id="0000"
 YOUR_TOKEN="0000"
 export DOCKER_BUILDKIT=1
-
-
-
-
-# Отримання директорії, де знаходиться скрипт
+#Отримання директорії, де знаходиться скрипт
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 # Задаємо ім'я папки, яку потрібно перевірити (наприклад, "docker_folder")
@@ -72,4 +68,4 @@ sudo docker buildx use mybuilder
 sudo docker buildx inspect --bootstrap
 
 sudo docker buildx build --tag telegram_bot_hetzner_app:latest --load .
-sudo docker-compose up -d
+sudo docker-compose up
