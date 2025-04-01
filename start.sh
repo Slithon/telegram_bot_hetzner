@@ -4,6 +4,8 @@ YOUR_TOKEN="0000"
 export DOCKER_BUILDKIT=1
 
 
+
+
 # Отримання директорії, де знаходиться скрипт
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
@@ -42,14 +44,13 @@ if ! command_exists docker-compose; then
     sudo chmod +x /usr/local/bin/docker-compose >/dev/null 2>&1
     sudo apt-get install docker-ce docker-ce-cli containerd.io -y >/dev/null 2>&1
 fi
+
 if ! docker buildx version &>/dev/null; then
     echo "Installing buildx..."
     mkdir -p ~/.docker/cli-plugins/
     curl -sL https://github.com/docker/buildx/releases/latest/download/buildx-$(uname -s)-$(uname -m) -o ~/.docker/cli-plugins/docker-buildx
     chmod +x ~/.docker/cli-plugins/docker-buildx
 fi
-
-
 REPO_URL="https://github.com/Slithon/telegram_bot_hetzner"
 CLONE_DIR="telegram_bot_hetzner"
 
@@ -65,7 +66,10 @@ COMPOSE_FILE="docker-compose.yml"
 sed -i 's|TELEGRAM_TOKEN: TOKEN|TELEGRAM_TOKEN: \"'"$YOUR_TOKEN"'\"|' "$COMPOSE_FILE"
 sed -i 's|MODERATOR_ID: MODERATOR|MODERATOR_ID: \"'"$first_moderator_id"'\"|' "$COMPOSE_FILE"
 
-sudo systemctl enable docker
-sudo docker buildx create --use
-sudo docker buildx build --platform linux/amd64,linux/arm64 -t myapp:latest .
+
+sudo docker buildx create --name mybuilder
+sudo docker buildx use mybuilder
+sudo docker buildx inspect --bootstrap
+
+sudo docker buildx build --tag telegram_bot_hetzner_app:latest --load .
 sudo docker-compose up -d
