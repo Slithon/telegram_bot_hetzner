@@ -3,7 +3,6 @@ first_moderator_id="0000"
 YOUR_TOKEN="0000"
 export DOCKER_BUILDKIT=1
 
-# Ensure buildx is installed
 
 # Отримання директорії, де знаходиться скрипт
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
