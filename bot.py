@@ -7,6 +7,7 @@ import logging
 import requests
 import secrets
 import string
+import functools
 from io import BytesIO
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -26,6 +27,41 @@ DB_NAME = os.getenv("DB_NAME", "telegram")
 # ==================== Версія коду ====================
 VERSION = "1.0"
 
+# ==================== Декоратори для перевірки реєстрації та ролі ====================
+def registered_only(func):
+    @functools.wraps(func)
+    def wrapper(message, *args, **kwargs):
+        # Дозволяємо як зареєстрованим користувачам, так і модераторам
+        if not (is_registered_user(message.chat.id) or is_moderator(message.chat.id)):
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
+
+def moderator_only(func):
+    @functools.wraps(func)
+    def wrapper(message, *args, **kwargs):
+        if not is_moderator(message.from_user.id):
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
+def registered_callback_only(func):
+    @functools.wraps(func)
+    def wrapper(call, *args, **kwargs):
+        if not is_user(call.message.chat.id):
+            return
+        return func(call, *args, **kwargs)
+    return wrapper
+
+def moderator_callback_only(func):
+    @functools.wraps(func)
+    def wrapper(call, *args, **kwargs):
+        if not is_moderator(call.from_user.id):
+            return
+        return func(call, *args, **kwargs)
+    return wrapper
+
 # ==================== Функція перевірки версії бази даних ====================
 def check_and_update_version():
     try:
@@ -36,7 +72,6 @@ def check_and_update_version():
             database=DB_NAME
         )
         cursor = connection.cursor()
-        # Створення таблиці версії, якщо її ще немає
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS version (
                 id INT PRIMARY KEY,
@@ -52,7 +87,6 @@ def check_and_update_version():
                 print("База даних актуальна. Ініціалізація пропущена.")
             elif float(db_version) + 0.1 == float(VERSION):
                 print(f"Оновлення бази даних з версії {db_version} до {VERSION}...")
-                # Тут можна додати додатковий код для оновлення структури бази
                 cursor.execute("UPDATE version SET version = %s WHERE id = 1", (VERSION,))
                 connection.commit()
             else:
@@ -68,7 +102,6 @@ def check_and_update_version():
         logging.error(f"Помилка при роботі з версією бази: {err}")
         exit(1)
 
-# Виконуємо перевірку версії перед створенням інших таблиць
 check_and_update_version()
 
 # ==================== Допоміжна функція для роботи з базою даних ====================
@@ -160,8 +193,8 @@ main_markup.add(KeyboardButton("/my_id"), KeyboardButton("/server_control"))
 
 qr_message_id = {}
 admin_qr_msg_id = {}
-registration_info = {}   # дані реєстрації користувача
-selected_server = {}     # зберігає вибір сервера користувача (chat_id -> server_id)
+registration_info = {}
+selected_server = {}
 pending_deletion = {}
 secret_message_id = {}
 admin_secret_message_id = {}
@@ -182,15 +215,12 @@ def update_users_cache():
 update_users_cache()
 
 def is_moderator(user_id):
-    """Перевіряє, чи є користувач модератором (адміністратором)."""
     return str(user_id) in admins_cache
 
 def is_registered_user(user_id):
-    """Перевіряє, чи є користувач звичайно зареєстрованим користувачем (без статусу модератора)."""
     return str(user_id) in users_cache
 
 def is_user(user_id):
-    """Перевіряє, чи є користувач зареєстрованим: або звичайним користувачем, або модератором."""
     return is_registered_user(user_id) or is_moderator(user_id)
 
 # ==================== Меню та команди для Telegram бота ====================
@@ -198,24 +228,19 @@ def send_commands_menu(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     user_commands = ["мій айді", "керування сервером"]
     admin_commands = ["групи", "розблокувати користувача", "модератори"]
-    # Для модераторів відображаємо обидва набори, для звичайних – лише команди користувача
     buttons = admin_commands + user_commands if is_moderator(message.from_user.id) else user_commands
     for button in buttons:
         markup.add(button)
     bot.send_message(message.chat.id, "Оберіть команду або вкладку:", reply_markup=markup)
 
 @bot.message_handler(commands=["start"])
+@registered_only
 def start(message):
-    if is_user(message.chat.id):
-        send_commands_menu(message)
-    else:
-        bot.send_message(message.chat.id, "Ви не зареєстровані. Будь ласка, зареєструйтесь за допомогою /register")
+    send_commands_menu(message)
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "мій айді")
+@registered_only
 def my_id(message):
-    if not is_user(message.chat.id):
-        bot.send_message(message.chat.id, "Ви не зареєстровані. Будь ласка, зареєструйтесь за допомогою /register")
-        return
     bot.reply_to(message, f"Ваш user ID: {message.chat.id}")
     send_commands_menu(message)
 
@@ -302,9 +327,8 @@ def verify_2fa(message, secret):
 
 # ==================== Команди для модераторів ====================
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "розблокувати користувача")
+@moderator_only
 def unblock_user(message):
-    if not is_moderator(message.from_user.id):
-        return
     blocked = execute_db("SELECT user_id, nickname FROM blocked_users", fetchone=False)
     if not blocked:
         bot.send_message(message.chat.id, "Немає заблокованих користувачів.")
@@ -317,9 +341,8 @@ def unblock_user(message):
     bot.send_message(message.chat.id, "Оберіть користувача для розблокування:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_unblock:"))
+@moderator_callback_only
 def confirm_unblock_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     parts = call.data.split(":", 1)
     if len(parts) != 2:
         bot.answer_callback_query(call.id, "Невірний формат даних.")
@@ -333,12 +356,10 @@ def confirm_unblock_callback(call):
 
 def process_unblock_2fa(message):
     admin_id = message.from_user.id
-    admin_secret = None
-    # Отримуємо секретний ключ модератора
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (str(admin_id),), fetchone=True)
     if res:
         admin_secret = res[0]
-    if not admin_secret:
+    else:
         bot.send_message(message.chat.id, "Не знайдено ваш секретний ключ для 2FA.")
         pending_unblock.pop(admin_id, None)
         return
@@ -359,9 +380,8 @@ def process_unblock_2fa(message):
         bot.send_message(message.chat.id, "Користувача з таким ID не знайдено у списку заблокованих.")
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "змінити групу")
+@moderator_only
 def switch_group(message):
-    if not is_moderator(message.from_user.id):
-        return
     groups = execute_db("SELECT group_name FROM groups_for_hetzner", fetchone=False)
     if not groups:
         bot.send_message(message.chat.id, "Немає доступних груп для перемикання.")
@@ -372,16 +392,14 @@ def switch_group(message):
     bot.send_message(message.chat.id, "Оберіть групу для перемикання:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("switch_group:"))
+@moderator_callback_only
 def confirm_switch_group(call):
-    if not is_moderator(call.from_user.id):
-        return
     new_group = call.data.split(":", 1)[1]
     user_id = str(call.from_user.id)
-    admin_secret = None
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (user_id,), fetchone=True)
     if res:
         admin_secret = res[0]
-    if not admin_secret:
+    else:
         bot.send_message(call.message.chat.id, "Ваш секретний ключ для 2FA не знайдено.")
         return
     bot.send_message(call.message.chat.id, "Введіть 2FA-код для підтвердження зміни групи:")
@@ -406,6 +424,7 @@ def verify_switch_group_2fa(message, new_group, user_id, msg_id):
         print(f"Помилка при видаленні кнопок: {e}")
 
 @bot.message_handler(commands=["ad_moderator_standart"])
+@moderator_only
 def ad_moderator_standart(message):
     try:
         execute_db("INSERT IGNORE INTO pending_admins (moderator_id) VALUES (%s)", (str(first_moderator_id),), commit=True)
@@ -414,9 +433,8 @@ def ad_moderator_standart(message):
         bot.send_message(message.chat.id, f"❌ Помилка: {err}")
 
 @bot.message_handler(commands=["clear_users"])
+@moderator_only
 def clear_users(message):
-    if not is_moderator(message.from_user.id):
-        return
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (str(message.from_user.id),), fetchone=True)
     if not res:
         bot.send_message(message.chat.id, "Не знайдено секретного ключа для 2FA.")
@@ -439,9 +457,8 @@ def verify_clear_users(message, secret):
         bot.send_message(message.chat.id, "❌ Невірний код. Операція скасована.")
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "створити одноразовий код")
+@moderator_only
 def create_time_key(message):
-    if not is_moderator(message.from_user.id):
-        return
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (str(message.from_user.id),), fetchone=True)
     if not res:
         bot.send_message(message.chat.id, "Ваш секретний ключ для 2FA не знайдено.")
@@ -468,9 +485,8 @@ def verify_create_time_key_2fa(message, secret):
         bot.send_message(message.chat.id, "❌ Невірний код 2FA. Операція скасована.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("create_time_key:"))
+@moderator_callback_only
 def callback_create_time_key(call):
-    if not is_moderator(call.from_user.id):
-        return
     group_name = call.data.split(":", 1)[1]
     try:
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
@@ -487,9 +503,8 @@ def callback_create_time_key(call):
         bot.send_message(call.message.chat.id, f"Помилка генерації коду: {err}")
 
 @bot.message_handler(commands=["stop_bot"])
+@moderator_only
 def stop_bot(message):
-    if not is_moderator(message.from_user.id):
-        return
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (str(message.from_user.id),), fetchone=True)
     if not res:
         bot.send_message(message.chat.id, "Не знайдено секретного ключа для 2FA.")
@@ -519,9 +534,8 @@ def do_stop_bot(message):
     bot.stop_polling()
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "створити групу")
+@moderator_only
 def create_group(message):
-    if not is_moderator(message.from_user.id):
-        return
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (str(message.from_user.id),), fetchone=True)
     if not res:
         bot.send_message(message.chat.id, "Ваш секретний ключ для 2FA не знайдено.")
@@ -564,9 +578,8 @@ def process_group_signature(message):
         bot.send_message(message.chat.id, f"❌ Помилка створення групи: {err}")
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "добавити модератора")
+@moderator_only
 def add_moderator(message):
-    if not is_moderator(message.from_user.id):
-        return
     bot.send_message(message.chat.id, "Введіть ID модератора для додавання:")
     bot.register_next_step_handler(message, process_add_moderator)
 
@@ -580,9 +593,8 @@ def process_add_moderator(message):
         bot.send_message(message.chat.id, f"❌ Помилка додавання модератора: {err}")
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "список груп")
+@moderator_only
 def list_groups(message):
-    if not is_moderator(message.from_user.id):
-        return
     groups = execute_db("SELECT group_name, group_signature FROM groups_for_hetzner", fetchone=False)
     if not groups:
         bot.send_message(message.chat.id, "Немає створених груп.")
@@ -615,24 +627,23 @@ def list_groups(message):
         bot.send_message(message.chat.id, text, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_user_group:"))
+@moderator_callback_only
 def delete_user_group_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     group_name = call.data.split(":", 1)[1]
     bot.answer_callback_query(call.id, "Введіть 2FA-код для підтвердження видалення користувача.")
     bot.send_message(call.message.chat.id, "Введіть 2FA-код для підтвердження видалення користувача:")
     pending_deletion[str(call.from_user.id)] = {"action": "list_users", "group": group_name, "chat_id": call.message.chat.id}
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_server_group:"))
+@moderator_callback_only
 def delete_server_group_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     group_name = call.data.split(":", 1)[1]
     bot.answer_callback_query(call.id, "Введіть 2FA-код для підтвердження видалення сервера.")
     bot.send_message(call.message.chat.id, "Введіть 2FA-код для підтвердження видалення сервера:")
     pending_deletion[str(call.from_user.id)] = {"action": "list_servers", "group": group_name, "chat_id": call.message.chat.id}
 
 @bot.message_handler(func=lambda m: str(m.from_user.id) in pending_deletion and pending_deletion[str(m.from_user.id)]["action"] in ["list_users", "list_servers"])
+@registered_only
 def process_deletion_2fa(message):
     info = pending_deletion.pop(str(message.from_user.id), None)
     if not info:
@@ -671,9 +682,8 @@ def process_deletion_2fa(message):
         bot.send_message(chat_id, "Оберіть сервер для видалення:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delete_user:"))
+@moderator_callback_only
 def confirm_delete_user_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     data = call.data.split(":")
     group_name = data[1]
     user_id = data[2]
@@ -686,9 +696,8 @@ def confirm_delete_user_callback(call):
         bot.send_message(call.message.chat.id, f"❌ Помилка видалення користувача: {err}")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delete_server:"))
+@moderator_callback_only
 def confirm_delete_server_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     data = call.data.split(":")
     group_name = data[1]
     server_id = data[2]
@@ -758,9 +767,8 @@ def verify_admin_2fa(message, secret):
         bot.register_next_step_handler(message, verify_admin_2fa, secret)
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "керування модераторами")
+@moderator_only
 def manage_moderators(message):
-    if not is_moderator(message.from_user.id):
-        return
     moderators = execute_db("SELECT admin_id, username FROM admins_2fa", fetchone=False)
     if not moderators:
         bot.send_message(message.chat.id, "Немає зареєстрованих модераторів.")
@@ -772,9 +780,8 @@ def manage_moderators(message):
     bot.send_message(message.chat.id, "Список модераторів:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("remove_moderator:"))
+@moderator_callback_only
 def remove_moderator_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     mod_id = call.data.split(":", 1)[1]
     chat_id = call.message.chat.id
     try:
@@ -808,13 +815,11 @@ def verify_remove_moderator(message, mod_id):
 
 # ==================== Команди для керування Hetzner-серверами ====================
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "керування сервером")
+@registered_only
 def server_control(message):
-    if not is_user(message.from_user.id):
-        return
     user_id = message.from_user.id
-    # Перевірка групи для звичайного користувача (для модераторів група також визначається з таблиці users)
-    group_name = execute_db("SELECT group_name FROM users WHERE user_id = %s", (str(user_id),), fetchone=True)
-    group_name = group_name[0] if group_name else None
+    group_result = execute_db("SELECT group_name FROM users WHERE user_id = %s", (str(user_id),), fetchone=True)
+    group_name = group_result[0] if group_result else None
     if not group_name:
         bot.send_message(message.chat.id, "Ви не зареєстровані або не прив'язані до групи.")
         return
@@ -864,7 +869,6 @@ def process_server_action(message):
     if not server_id:
         bot.send_message(message.chat.id, "Сервер не вибрано. Спробуйте знову.")
         return
-    # Отримання ключа Hetzner для групи
     hetzner_key_result = execute_db("SELECT key_hetzner FROM groups_for_hetzner WHERE group_name = %s", (group_name,), fetchone=True)
     hetzner_key = hetzner_key_result[0] if hetzner_key_result else None
     if not hetzner_key:
@@ -922,9 +926,8 @@ def confirm_server_action_2fa(message, action, server_id, group_name, hetzner_ke
         send_commands_menu(message)
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "добавити сервер")
+@moderator_only
 def add_server(message):
-    if not is_moderator(message.from_user.id):
-        return
     groups = execute_db("SELECT group_name, group_signature FROM groups_for_hetzner", fetchone=False)
     if not groups:
         bot.send_message(message.chat.id, "Немає створених груп.")
@@ -937,9 +940,8 @@ def add_server(message):
     bot.send_message(message.chat.id, "Оберіть групу, до якої бажаєте додати сервер:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("select_group_add_server:"))
+@moderator_callback_only
 def select_group_add_server_callback(call):
-    if not is_moderator(call.from_user.id):
-        return
     group_name = call.data.split(":", 1)[1]
     try:
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
@@ -967,9 +969,8 @@ def process_server_name(message, group_name, server_id):
         bot.send_message(message.chat.id, f"❌ Помилка при додаванні сервера: {err}")
 
 @bot.message_handler(func=lambda message: message.text.strip().lower() == "список одноразових кодів")
+@moderator_only
 def list_time_keys(message):
-    if not is_moderator(message.from_user.id):
-        return
     res = execute_db("SELECT secret_key FROM admins_2fa WHERE admin_id = %s", (str(message.from_user.id),), fetchone=True)
     if not res:
         bot.send_message(message.chat.id, "Ваш секретний ключ для 2FA не знайдено.")
@@ -998,6 +999,7 @@ def verify_list_time_keys(message, admin_secret):
     bot.send_message(message.chat.id, text, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_time_key:"))
+@moderator_callback_only
 def delete_time_key_callback(call):
     parts = call.data.split(":")
     if len(parts) != 3:
@@ -1012,12 +1014,11 @@ def delete_time_key_callback(call):
         bot.send_message(call.message.chat.id, f"❌ Помилка видалення коду: {err}")
         send_commands_menu(call)
 
+# ==================== Загальний обробник текстових повідомлень ====================
 @bot.message_handler(content_types=['text'])
+@registered_only
 def all_text(message):
-    if is_user(message.chat.id):
-        send_commands_menu(message)
-    else:
-        bot.send_message(message.chat.id, "Ви не зареєстровані. Будь ласка, зареєструйтесь за допомогою /register")
+    send_commands_menu(message)
 
 # ==================== Запуск бота ====================
 bot.polling()
