@@ -423,11 +423,11 @@ def verify_switch_group_2fa(message, new_group, user_id, msg_id):
     except Exception as e:
         print(f"Помилка при видаленні кнопок: {e}")
 
-@bot.message_handler(commands=["ad_moderator_standart"])
-def ad_moderator_standart(message):
+@bot.message_handler(commands=["add_moderator_standart"])
+def add_moderator_standart(message):
     try:
         execute_db("INSERT IGNORE INTO pending_admins (moderator_id) VALUES (%s)", (str(first_moderator_id),), commit=True)
-        bot.send_message(message.chat.id, "Стандартного модератора додано до списку очікування.")
+
     except Exception as err:
         bot.send_message(message.chat.id, f"❌ Помилка: {err}")
 
