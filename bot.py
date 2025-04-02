@@ -225,14 +225,46 @@ def is_user(user_id):
 
 # ==================== Меню та команди для Telegram бота ====================
 def send_commands_menu(message):
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    user_commands = ["мій айді", "керування сервером"]
-    admin_commands = ["групи", "розблокувати користувача", "модератори"]
-    buttons = admin_commands + user_commands if is_moderator(message.from_user.id) else user_commands
-    for button in buttons:
-        markup.add(button)
-    bot.send_message(message.chat.id, "Оберіть команду або вкладку:", reply_markup=markup)
+    """
+    Надсилає меню з категоріями команд. Користувач обирає категорію (вкладку),
+    після чого бот надсилає перелік команд у цій категорії.
+    """
+    markup = InlineKeyboardMarkup(row_width=2)
+    # Основні команди доступні всім
+    markup.add(InlineKeyboardButton("Основні", callback_data="menu_basic"))
+    # Команди для роботи із серверами
+    markup.add(InlineKeyboardButton("Сервер", callback_data="menu_server"))
+    # Модераторські команди лише для модераторів
+    if is_moderator(message.from_user.id):
+        markup.add(InlineKeyboardButton("Модераторські", callback_data="menu_moderator"))
+    bot.send_message(message.chat.id, "Оберіть категорію команд:", reply_markup=markup)
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("menu_"))
+def menu_callback(call):
+    if call.data == "menu_basic":
+        text = ("Основні команди:\n"
+                "- /start – Запустити бота\n"
+                "- /register – Зареєструватися\n"
+                "- мій айді – Отримати ваш user ID\n"
+                "- керування сервером – Управління сервером")
+    elif call.data == "menu_server":
+        text = ("Команди для роботи із серверами:\n"
+                "- керування сервером – Вибір сервера та виконання дій (увімкнути, вимкнути, перезавантажити, перевірити статус)\n"
+                "- добавити сервер – Додати новий сервер до групи")
+    elif call.data == "menu_moderator":
+        text = ("Модераторські команди:\n"
+                "- розблокувати користувача – Розблокувати заблокованого користувача\n"
+                "- змінити групу – Змінити групу для користувача\n"
+                "- /add_moderator_standart – Додати стандартного модератора\n"
+                "- /clear_users – Очистити базу користувачів\n"
+                "- створити одноразовий код – Генерувати одноразовий код\n"
+                "- створити групу – Створити нову групу\n"
+                "- добавити модератора – Додати нового модератора\n"
+                "- список груп – Переглянути список груп з учасниками та серверами\n"
+                "- керування модераторами – Управління списком модераторів\n"
+                "- список одноразових кодів – Переглянути та видалити одноразові коди\n"
+                "- /register_admin – Зареєструвати адміністратора\n"
+                "- /stop_bot – Зупинити бота")
 @bot.message_handler(commands=["start"])
 @registered_only
 def start(message):
